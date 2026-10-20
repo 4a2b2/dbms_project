@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.example.survey.service.SurveyFlowIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 93.83 s -- in com.example.survey.service.SurveyFlowIntegrationTest

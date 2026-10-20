@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>问卷统计</title>
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="container">
+    <div class="topbar">
+        <div class="brand"><a href="/surveys">← 返回列表</a></div>
+        <div class="user-area" id="userArea"></div>
+    </div>
+    <div id="notice" class="notice"></div>
+    <div id="app"></div>
+</div>
+<input type="hidden" id="surveyId" th:value="${surveyId}">
+<script src="/js/common.js"></script>
+<script>
+    const SURVEY_ID = document.getElementById('surveyId').value;
+    requireLogin();
+    renderUserArea();
+
+    const TYPE_TEXT = { single: '单选题', multiple: '多选题', text: '文本题', number: '数字题' };
+
+    function summaryHtml(q) {
+        const s = q.summary;
+        if (q.type === 'single' || q.type === 'multiple') {
+            const maxCount = Math.max(1, ...s.options.map(o => o.count));
+            return s.options.map(o => `
+                <div class="stat-option-row">
+                    <div class="label">${escapeHtml(o.text)}</div>
+                    <div class="stat-bar-track"><div class="stat-bar" style="width:${(o.count / maxCount * 100).toFixed(1)}%"></div></div>
+                    <div class="count">${o.count}</div>
+                </div>`).join('') + `<div class="muted" style="margin-top:6px">共 ${s.total} 人作答</div>`;
+        }
+        if (q.type === 'number') {
+            return `<div class="row-between" style="text-align:center">
+                <div style="flex:1"><div style="font-size:24px;font-weight:600">${Number(s.average.toFixed(2))}</div><div class="muted">平均值</div></div>
+                <div style="flex:1"><div style="font-size:24px;font-weight:600">${s.min}</div><div class="muted">最小值</div></div>
+                <div style="flex:1"><div style="font-size:24px;font-weight:600">${s.max}</div><div class="muted">最大值</div></div>
+            </div><div class="muted center" style="margin-top:6px">共 ${s.total} 人作答</div>`;
+        }
+        if (q.type === 'text') {
+            if (!s.texts.length) return '<div class="muted">暂无回答</div>';
+            return s.texts.map(t => `<div class="text-answer">${escapeHtml(t)}</div>`).join('')
+                + `<div class="muted">共 ${s.total} 条回答</div>`;
+        }
+        return '';
+    }
+
+    async function load() {
+        const data = await api(`/api/surveys/${SURVEY_ID}/stats`);
+        document.title = data.title + ' - 统计';
+        document.getElementById('app').innerHTML = `
+            <div class="card">
+                <h2 style="margin:0">${escapeHtml(data.title)}</h2>
+                <p class="muted" style="margin:6px 0 0">已收集 ${data.responseCount} 份答卷</p>
+            </div>
+            ${data.questions.map((q, i) => `
+                <div class="card">
+                    <h3 style="margin:0 0 4px">${i + 1}. ${escapeHtml(q.title)}</h3>
+                    <div class="muted" style="margin-bottom:14px">${TYPE_TEXT[q.type] || q.type}</div>
+                    ${summaryHtml(q)}
+                </div>`).join('')}`;
+    }
+
+    load().catch(e => showNotice(e.message));
+</script>
+</body>
+</html>
