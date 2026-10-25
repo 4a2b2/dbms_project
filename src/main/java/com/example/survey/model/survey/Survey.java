@@ -17,8 +17,8 @@ import java.util.List;
 @Document("surveys")
 public class Survey {
 
-    /** 结构版本号，便于后续升级迁移 */
-    public static final int SCHEMA_VERSION = 1;
+    /** 结构版本号，便于后续升级迁移。v2：题目改为题库版本引用 + 快照 */
+    public static final int SCHEMA_VERSION = 2;
 
     @Id
     private String id;

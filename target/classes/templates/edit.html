@@ -16,6 +16,21 @@
       <div id="app"></div>
     </div>
     <input type="hidden" id="surveyId" th:value="${surveyId}" />
+    <div
+      id="libModal"
+      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:100;overflow-y:auto"
+    >
+      <div class="card" style="max-width:720px;margin:60px auto 40px">
+        <div class="row-between">
+          <h3 style="margin:0">从题库选择</h3>
+          <button class="btn btn-sm" onclick="closeLibrary()">关闭</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0">
+          选用后题目内容会复制进问卷并引用当前版本；在问卷中修改自己的题会自动产生新版本。
+        </p>
+        <div id="libList" style="margin-top:14px">加载中…</div>
+      </div>
+    </div>
     <script src="/js/common.js"></script>
     <script>
       const SURVEY_ID = document.getElementById("surveyId").value;
@@ -96,6 +111,7 @@
                         <button class="btn btn-sm" onclick="addQuestion('multiple')">+ 多选</button>
                         <button class="btn btn-sm" onclick="addQuestion('text')">+ 文本</button>
                         <button class="btn btn-sm" onclick="addQuestion('number')">+ 数字</button>
+                        <button class="btn btn-sm" onclick="openLibrary()">从题库选择</button>
                     </div>`
                         : ""
                     }
@@ -130,6 +146,7 @@
         return `<div class="question-card">
             <div class="row-between">
                 <strong>${i + 1}. ${TYPE_TEXT[q.type]}</strong>
+                ${q.version ? `<span class="tag gray" title="该题来自题库，当前引用版本 v${q.version}；修改内容保存后将自动产生新版本">题库 v${q.version}</span>` : ""}
                 ${
                   isDraft()
                     ? `<div style="display:flex;gap:6px">
@@ -469,6 +486,68 @@
         const d = new Date(iso);
         const pad = (n) => String(n).padStart(2, "0");
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
+
+      /* ========== 题库选题 ========== */
+
+      let libItems = [];
+
+      async function openLibrary() {
+        document.getElementById("libModal").style.display = "block";
+        const box = document.getElementById("libList");
+        box.innerHTML = "加载中…";
+        try {
+          const [mine, shared] = await Promise.all([
+            api("/api/items"),
+            api("/api/items/shared"),
+          ]);
+          libItems = [...mine, ...shared.filter((it) => !it.mine)];
+          if (!libItems.length) {
+            box.innerHTML = `<div class="muted">题库还是空的，可先到 <a href="/library" target="_blank">题库页</a> 新建题目</div>`;
+            return;
+          }
+          box.innerHTML = libItems
+            .map(
+              (it) => `<div class="row-between" style="padding:10px 0;border-bottom:1px solid #f0eee8">
+                <div>
+                    <strong>${escapeHtml(it.title)}</strong>
+                    <span class="tag" style="margin-left:8px">${TYPE_TEXT[it.type] || it.type}</span>
+                    <span class="tag gray">v${it.currentVersion}</span>
+                    ${it.mine ? "" : '<span class="tag gray">共享</span>'}
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="pickItem('${it.id}')">选用</button>
+            </div>`,
+            )
+            .join("");
+        } catch (e) {
+          box.textContent = e.message;
+        }
+      }
+
+      function closeLibrary() {
+        document.getElementById("libModal").style.display = "none";
+      }
+
+      function pickItem(id) {
+        const it = libItems.find((x) => x.id === id);
+        if (!it) return;
+        survey.questions.push({
+          qid: newId(),
+          itemId: it.id,
+          versionId: it.currentVersionId,
+          version: it.currentVersion,
+          type: it.type,
+          title: it.title,
+          required: it.required,
+          options: (it.options || []).map((o) => ({ oid: o.oid, text: o.text })),
+          constraints: it.constraints || {},
+        });
+        closeLibrary();
+        markDirty();
+        render();
+        const cards = document.querySelectorAll("#questionList .question-card");
+        const card = cards[cards.length - 1];
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
       }
 
       /* ========== 入口 ========== */

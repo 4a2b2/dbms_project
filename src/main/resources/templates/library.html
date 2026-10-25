@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>题库 - 问卷系统</title>
+    <link rel="stylesheet" href="/css/app.css">
+    <style>
+        .lib-tabs { display:flex; gap:8px; margin-bottom:18px; }
+        .lib-tabs .btn.active { background: var(--accent); border-color: var(--accent); color:#fff; }
+        .item-card .ops { display:flex; gap:6px; flex-wrap:wrap; }
+        .sub-panel { border-top:1px dashed var(--border); margin-top:14px; padding-top:14px; }
+        .version-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid #f0eee8; }
+        .version-row:last-child { border-bottom:none; }
+        .stat-num { font-size:22px; font-weight:600; color:var(--accent-hover); }
+    </style>
+</head>
+<body>
+<div class="container-wide">
+    <div class="topbar">
+        <div class="brand"><a href="/surveys">← 我的问卷</a></div>
+        <div class="user-area" id="userArea"></div>
+    </div>
+    <div id="notice" class="notice"></div>
+
+    <div class="card">
+        <div class="row-between">
+            <h2 style="margin:0">题库</h2>
+            <button class="btn btn-primary" onclick="openCreate()">+ 新建题目</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0">题目保存在题库后可被多份问卷重复引用；修改题目会产生新版本，已引用旧版本的问卷内容保持不变。</p>
+    </div>
+
+    <div id="createBox"></div>
+
+    <div class="lib-tabs">
+        <button class="btn btn-sm" id="tabMine" onclick="switchTab('mine')">我的题库</button>
+        <button class="btn btn-sm" id="tabShared" onclick="switchTab('shared')">共享广场</button>
+    </div>
+
+    <div id="list"></div>
+</div>
+
+<script src="/js/common.js"></script>
+<script>
+    requireLogin();
+    renderUserArea();
+
+    const TYPE_TEXT = { single: '单选题', multiple: '多选题', text: '文本题', number: '数字题' };
+    let tab = 'mine';
+    let items = [];
+    let expanded = {}; // itemId -> 'edit' | 'history' | 'usage' | 'stats'
+
+    /* ========== 加载与渲染 ========== */
+
+    async function load() {
+        items = await api(tab === 'mine' ? '/api/items' : '/api/items/shared');
+        document.getElementById('tabMine').classList.toggle('active', tab === 'mine');
+        document.getElementById('tabShared').classList.toggle('active', tab === 'shared');
+        const box = document.getElementById('list');
+        if (!items.length) {
+            box.innerHTML = `<div class="card muted center">${tab === 'mine' ? '题库还是空的，点击右上角新建题目' : '还没有人共享题目'}</div>`;
+            return;
+        }
+        box.innerHTML = items.map(itemHtml).join('');
+    }
+
+    function switchTab(t) {
+        tab = t;
+        expanded = {};
+        load().catch(e => showNotice(e.message));
+    }
+
+    function itemHtml(it) {
+        const exp = expanded[it.id];
+        return `<div class="card item-card">
+            <div class="row-between">
+                <div>
+                    <strong>${escapeHtml(it.title)}</strong>
+                    <span class="tag" style="margin-left:8px">${TYPE_TEXT[it.type] || it.type}</span>
+                    <span class="tag gray">v${it.currentVersion}</span>
+                    ${it.required ? '<span class="tag gray">必答</span>' : ''}
+                    ${it.shared ? '<span class="tag">已共享</span>' : ''}
+                    ${(it.tags || []).map(t => `<span class="tag gray">${escapeHtml(t)}</span>`).join('')}
+                    <div class="muted" style="margin-top:4px">更新于 ${new Date(it.updatedAt).toLocaleString('zh-CN')}${!it.mine ? ' · 来自其他用户' : ''}</div>
+                </div>
+                <div class="ops">
+                    ${it.mine ? `<button class="btn btn-sm" onclick="openEditForm('${it.id}')">编辑</button>` : ''}
+                    <button class="btn btn-sm" onclick="toggle('${it.id}','history')">历史</button>
+                    ${it.mine ? `<button class="btn btn-sm" onclick="toggle('${it.id}','usage')">使用情况</button>
+                    <button class="btn btn-sm" onclick="toggle('${it.id}','stats')">统计</button>
+                    <button class="btn btn-sm" onclick="toggleShare('${it.id}',${!it.shared})">${it.shared ? '取消共享' : '共享'}</button>
+                    <button class="btn btn-sm btn-danger" onclick="removeItem('${it.id}')">删除</button>` : ''}
+                </div>
+            </div>
+            ${exp === 'history' ? `<div class="sub-panel" id="sub-${it.id}">加载中…</div>` : ''}
+            ${exp === 'usage' ? `<div class="sub-panel" id="sub-${it.id}">加载中…</div>` : ''}
+            ${exp === 'stats' ? `<div class="sub-panel" id="sub-${it.id}">加载中…</div>` : ''}
+        </div>`;
+    }
+
+    function viewHtml(it) {
+        let body = '';
+        if (it.type === 'single' || it.type === 'multiple') {
+            body = (it.options || []).map(o => `<div class="muted">· ${escapeHtml(o.text)}</div>`).join('');
+        } else if (it.type === 'number') {
+            const c = it.constraints || {};
+            body = `<div class="muted">范围：${c.min ?? '不限'} ~ ${c.max ?? '不限'}${c.integerOnly ? '，仅整数' : ''}</div>`;
+        } else {
+            const c = it.constraints || {};
+            body = `<div class="muted">字数：${c.minLength ?? '不限'} ~ ${c.maxLength ?? '不限'}</div>`;
+        }
+        return body;
+    }
+
+    /* ========== 展开面板 ========== */
+
+    async function toggle(id, panel) {
+        expanded = expanded[id] === panel ? {} : { [id]: panel };
+        await load();
+        if (expanded[id] === 'history') renderHistory(id);
+        if (expanded[id] === 'usage') renderUsage(id);
+        if (expanded[id] === 'stats') renderStats(id);
+    }
+
+    async function renderHistory(id) {
+        const el = document.getElementById('sub-' + id);
+        try {
+            const versions = await api('/api/items/' + id + '/versions');
+            const it = items.find(x => x.id === id);
+            el.innerHTML = `<h4 style="margin:0 0 8px">版本历史</h4>` + versions.map(v => `
+                <div class="version-row">
+                    <div>
+                        <strong>v${v.version}</strong>
+                        <span class="muted" style="margin-left:10px">${escapeHtml(v.title)}</span>
+                        ${v.note ? `<span class="muted">（${escapeHtml(v.note)}）</span>` : ''}
+                        <div class="muted" style="font-size:12px">${new Date(v.createdAt).toLocaleString('zh-CN')}${v.parentVersionId ? ' · 基于上一版本修改' : ' · 初始版本'}</div>
+                    </div>
+                    ${v.id !== it.currentVersionId && it.mine ? `<button class="btn btn-sm" onclick="restoreVersion('${id}','${v.id}',${v.version})">恢复为此版本</button>` : '<span class="tag">当前</span>'}
+                </div>`).join('');
+        } catch (e) { el.textContent = e.message; }
+    }
+
+    async function renderUsage(id) {
+        const el = document.getElementById('sub-' + id);
+        try {
+            const usage = await api('/api/items/' + id + '/usage');
+            el.innerHTML = `<h4 style="margin:0 0 8px">被 ${usage.length} 处引用</h4>` + (usage.length
+                ? usage.map(u => `<div class="version-row">
+                    <div><a href="/surveys/${u.surveyId}/edit">${escapeHtml(u.surveyTitle)}</a>
+                        <span class="tag gray" style="margin-left:8px">${{DRAFT:'草稿',PUBLISHED:'已发布',CLOSED:'已关闭'}[u.surveyStatus]}</span></div>
+                    <span class="muted">使用 v${u.version}</span>
+                </div>`).join('')
+                : '<div class="muted">还没有问卷使用这道题</div>');
+        } catch (e) { el.textContent = e.message; }
+    }
+
+    async function renderStats(id) {
+        const el = document.getElementById('sub-' + id);
+        try {
+            const s = await api('/api/items/' + id + '/stats');
+            let html = `<h4 style="margin:0 0 8px">跨问卷统计</h4>
+                <div class="muted" style="margin-bottom:10px">共 ${s.versionCount} 个版本 · 累计回答 <span class="stat-num">${s.totalResponses}</span> 次</div>`;
+            if (s.overall) {
+                html += `<div class="question-card"><strong>全部版本汇总</strong>${summaryHtml(s.type, s.overall)}</div>`;
+            }
+            html += s.byVersion.filter(v => v.responseCount > 0).map(v => `
+                <div class="question-card"><strong>v${v.version}</strong>
+                    <span class="muted">（${v.surveyCount} 份问卷 · ${v.responseCount} 次回答）</span>
+                    ${summaryHtml(s.type, v.summary)}</div>`).join('');
+            el.innerHTML = html;
+        } catch (e) { el.textContent = e.message; }
+    }
+
+    function summaryHtml(type, sum) {
+        if (!sum) return '<div class="muted">暂无回答</div>';
+        if (type === 'single' || type === 'multiple') {
+            const max = Math.max(1, ...sum.options.map(o => o.count));
+            return `<div style="margin-top:10px">` + sum.options.map(o => `
+                <div class="stat-option-row">
+                    <div class="label">${escapeHtml(o.text)}</div>
+                    <div class="stat-bar-track"><div class="stat-bar" style="width:${(o.count / max * 100).toFixed(1)}%"></div></div>
+                    <div class="count">${o.count}</div>
+                </div>`).join('') + `</div><div class="muted">共 ${sum.total} 人作答</div>`;
+        }
+        if (type === 'number') {
+            return `<div style="display:flex;gap:28px;margin-top:10px">
+                <div><div class="stat-num">${fmtNum(sum.average)}</div><div class="muted">平均值</div></div>
+                <div><div class="stat-num">${fmtNum(sum.min)}</div><div class="muted">最小值</div></div>
+                <div><div class="stat-num">${fmtNum(sum.max)}</div><div class="muted">最大值</div></div>
+            </div><div class="muted">共 ${sum.total} 人作答</div>`;
+        }
+        return `<div style="margin-top:10px">` + (sum.texts || []).map(t => `<div class="text-answer">${escapeHtml(t)}</div>`).join('')
+            + `</div><div class="muted">共 ${sum.total} 条</div>`;
+    }
+
+    const fmtNum = n => n == null ? '-' : (Number.isInteger(n) ? n : n.toFixed(2));
+
+    /* ========== 新建 / 编辑 ========== */
+
+    let editTarget = null; // null=新建，否则为 item
+    let formOptions = []; // 元素为 {oid, text}，编辑时保留原 oid，内容不变则不会产生新版本
+    let formType = 'single';
+    const newOpt = text => ({ oid: 'fo' + Math.random().toString(36).slice(2, 10), text });
+
+    function changeFormType(t) {
+        formType = t;
+        renderFormDynamic();
+    }
+
+    function openCreate() {
+        editTarget = null;
+        formType = 'single';
+        formOptions = [];
+        document.getElementById('createBox').innerHTML = `<div class="card" id="formCard">${formHtml()}</div>`;
+        renderFormDynamic();
+        document.getElementById('formCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function openEditForm(id) {
+        const it = items.find(x => x.id === id);
+        editTarget = it;
+        formType = it.type;
+        formOptions = (it.options || []).map(o => ({ oid: o.oid, text: o.text }));
+        document.getElementById('createBox').innerHTML = `<div class="card" id="formCard">${formHtml(it)}</div>`;
+        renderFormDynamic();
+        document.getElementById('formCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function formHtml(it) {
+        const type = it ? it.type : 'single';
+        const c = (it && it.constraints) || {};
+        return `<h3>${it ? '编辑题目（保存后将生成新版本 v' + (it.currentVersion + 1) + '）' : '新建题目'}</h3>
+            <div class="field"><label>题型${it ? '（不可变）' : ''}</label>
+                <select id="fType" ${it ? 'disabled' : ''} onchange="changeFormType(this.value)">
+                    ${Object.entries(TYPE_TEXT).map(([v, t]) => `<option value="${v}" ${v === type ? 'selected' : ''}>${t}</option>`).join('')}
+                </select></div>
+            <div class="field"><label>题目标题</label><input type="text" id="fTitle" value="${it ? escapeHtml(it.title) : ''}"></div>
+            <label><input type="checkbox" id="fRequired" ${!it || it.required ? 'checked' : ''} style="width:auto"> 必答</label>
+            <div id="fOptions" style="margin-top:10px"></div>
+            <div id="fConstraints"></div>
+            <div class="field" style="margin-top:14px"><label>标签（逗号分隔，可选）</label>
+                <input type="text" id="fTags" value="${it ? escapeHtml((it.tags || []).join(', ')) : ''}" placeholder="例如：人口学, 课程反馈"></div>
+            ${it ? '<div class="field"><label>修改说明（可选）</label><input type="text" id="fNote" placeholder="例如：调整了选项表述"></div>' : ''}
+            <div style="display:flex;gap:10px;margin-top:16px">
+                <button class="btn btn-primary" onclick="submitForm()">${it ? '保存为新版本' : '创建'}</button>
+                <button class="btn" onclick="closeForm()">取消</button>
+            </div>`;
+    }
+
+    /* ========== 操作 ========== */
+
+    function renderFormDynamic() {
+        const optBox = document.getElementById('fOptions');
+        const conBox = document.getElementById('fConstraints');
+        if (!optBox) return;
+        if (formType === 'single' || formType === 'multiple') {
+            if (!formOptions.length) formOptions = [newOpt('选项1'), newOpt('选项2')];
+            optBox.innerHTML = `<label class="muted">选项</label>` + formOptions.map((o, i) => `
+                <div class="option-row"><input type="text" value="${escapeHtml(o.text)}" onchange="formOptions[${i}].text=this.value">
+                <button class="btn btn-sm btn-danger" onclick="formOptions.splice(${i},1);renderFormDynamic()">×</button></div>`).join('')
+                + `<button class="btn btn-sm" onclick="formOptions.push(newOpt('选项'+(formOptions.length+1)));renderFormDynamic()">+ 添加选项</button>`;
+        } else {
+            optBox.innerHTML = '';
+            formOptions = [];
+        }
+        const numField = (key, label, val) => `<div><label class="muted">${label}</label>
+            <input type="number" step="any" id="fc_${key}" value="${val ?? ''}"></div>`;
+        const it = editTarget;
+        const c = (it && it.constraints) || {};
+        if (formType === 'multiple') {
+            conBox.innerHTML = `<div class="constraint-grid">${numField('minSelect', '最少选', c.minSelect)}${numField('maxSelect', '最多选', c.maxSelect)}</div>`;
+        } else if (formType === 'text') {
+            conBox.innerHTML = `<div class="constraint-grid">${numField('minLength', '最少字数', c.minLength)}${numField('maxLength', '最多字数', c.maxLength)}</div>`;
+        } else if (formType === 'number') {
+            conBox.innerHTML = `<div class="constraint-grid">${numField('min', '最小值', c.min)}${numField('max', '最大值', c.max)}
+                <div><label class="muted">仅限整数</label><label><input type="checkbox" id="fc_integerOnly" ${c.integerOnly ? 'checked' : ''} style="width:auto"> 开启</label></div></div>`;
+        } else {
+            conBox.innerHTML = '';
+        }
+    }
+
+    async function submitForm() {
+        try {
+            const title = document.getElementById('fTitle').value.trim();
+            if (!title) { showNotice('请填写题目标题'); return; }
+            const body = {
+                title,
+                required: document.getElementById('fRequired').checked,
+                tags: document.getElementById('fTags').value.split(',').map(s => s.trim()).filter(Boolean),
+            };
+            if (editTarget) {
+                const note = document.getElementById('fNote').value.trim();
+                if (note) body.note = note;
+            } else {
+                body.type = formType;
+            }
+            if (formType === 'single' || formType === 'multiple') {
+                if (formOptions.some(o => !o.text.trim())) { showNotice('选项不能为空'); return; }
+                body.options = formOptions.map(o => ({ oid: o.oid, text: o.text.trim() }));
+            }
+            const c = {};
+            for (const key of ['minSelect', 'maxSelect', 'minLength', 'maxLength', 'min', 'max']) {
+                const el = document.getElementById('fc_' + key);
+                if (el && el.value !== '') c[key] = parseFloat(el.value);
+            }
+            const intEl = document.getElementById('fc_integerOnly');
+            if (intEl && intEl.checked) c.integerOnly = true;
+            // 非单选题总是提交约束（空对象表示清空），单选题无约束字段不提交
+            if (formType !== 'single') body.constraints = c;
+
+            if (editTarget) {
+                await api('/api/items/' + editTarget.id, { method: 'PUT', body: JSON.stringify(body) });
+                showNotice('已保存为新版本', false);
+            } else {
+                await api('/api/items', { method: 'POST', body: JSON.stringify(body) });
+                showNotice('题目已创建', false);
+            }
+            closeForm();
+            await load();
+        } catch (e) { showNotice(e.message); }
+    }
+
+    function closeForm() {
+        editTarget = null;
+        formOptions = [];
+        document.getElementById('createBox').innerHTML = '';
+    }
+
+    /* ========== 操作 ========== */
+
+    async function toggleShare(id, shared) {
+        try {
+            await api('/api/items/' + id + '/share', { method: 'POST', body: JSON.stringify({ shared }) });
+            showNotice(shared ? '已共享，其他用户现在可以使用这道题' : '已取消共享', false);
+            await load();
+        } catch (e) { showNotice(e.message); }
+    }
+
+    async function removeItem(id) {
+        if (!confirm('确定删除这道题？')) return;
+        try {
+            await api('/api/items/' + id, { method: 'DELETE' });
+            showNotice('已删除', false);
+            await load();
+        } catch (e) { showNotice(e.message); }
+    }
+
+    async function restoreVersion(id, versionId, v) {
+        if (!confirm(`将以 v${v} 的内容创建一个最新版本，历史记录保留。继续？`)) return;
+        try {
+            await api('/api/items/' + id + '/restore', { method: 'POST', body: JSON.stringify({ versionId }) });
+            showNotice(`已恢复 v${v} 的内容为新版本`, false);
+            await load();
+        } catch (e) { showNotice(e.message); }
+    }
+
+    load().catch(e => showNotice(e.message));
+</script>
+</body>
+</html>

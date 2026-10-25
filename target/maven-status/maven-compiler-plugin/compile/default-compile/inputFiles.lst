@@ -1,6 +1,8 @@
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\config\SchemaMigrationRunner.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\config\WebConfig.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\controller\AuthController.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\controller\FillController.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\controller\ItemController.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\controller\PageController.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\controller\SurveyController.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\core\logic\ConditionOperator.java
@@ -19,15 +21,20 @@ C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\jav
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\AnswerRequest.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\AuthResponse.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\CreateSurveyRequest.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\ItemUpsertRequest.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\LoginRequest.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\PublicSurveyView.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\RegisterRequest.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\ResponseStateView.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\RestoreRequest.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\SaveAnswerResponse.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\ShareRequest.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\StartFillResponse.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\dto\UpdateSurveyRequest.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\exception\ApiException.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\exception\GlobalExceptionHandler.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\model\question\QuestionItem.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\model\question\QuestionVersion.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\model\response\Answer.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\model\response\ResponseStatus.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\model\response\SurveyResponse.java
@@ -40,6 +47,8 @@ C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\jav
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\model\survey\Survey.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\model\survey\SurveyStatus.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\model\User.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\repository\QuestionItemRepository.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\repository\QuestionVersionRepository.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\repository\SurveyRepository.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\repository\SurveyResponseRepository.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\repository\UserRepository.java
@@ -47,6 +56,7 @@ C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\jav
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\security\AuthInterceptor.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\security\JwtService.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\service\AuthService.java
+C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\service\ItemService.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\service\ResponseService.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\service\StatsService.java
 C:\Users\83892\Desktop\学校课程\数据库\project1\dbms_project\src\main\java\com\example\survey\service\SurveyService.java

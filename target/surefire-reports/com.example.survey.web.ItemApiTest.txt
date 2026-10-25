@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.example.survey.web.ItemApiTest
+-------------------------------------------------------------------------------
+Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.719 s -- in com.example.survey.web.ItemApiTest

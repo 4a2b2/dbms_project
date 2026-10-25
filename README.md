@@ -1,8 +1,9 @@
 # 问卷系统（Survey System）
 
-基于 **MongoDB + Spring Boot** 的在线问卷系统（类问卷星 / Google Forms），数据库课程设计第一阶段成果。
+基于 **MongoDB + Spring Boot** 的在线问卷系统（类问卷星 / Google Forms），数据库课程设计成果（含阶段二题库扩展）。
 
 注册用户可创建问卷并通过分享链接分发，填写者（支持匿名）逐题作答，创建者实时查看统计结果。
+阶段二新增题库：题目独立保存与多版本管理、共享复用、跨问卷统计，修改题目不影响已做好的问卷。
 
 ## 功能
 
@@ -17,11 +18,12 @@
 | 填写 | 逐题渲染、即时校验、按规则跳转、草稿实时落库、断点续填 |
 | 设置 | 是否允许匿名、是否允许重复提交、截止时间 |
 | 统计 | 选项计数、文本内容列表、数字平均值/最小值/最大值 |
+| 题库（阶段二） | 题目独立保存复用、不可变版本链、修改历史与恢复、共享广场、使用情况追踪、跨问卷统计 |
 
 ## 技术栈
 
 - **后端**：Java 21、Spring Boot 3.3.5、Spring Data MongoDB、Spring Security Crypto（仅 BCrypt）、jjwt 0.12.6、Lombok
-- **数据库**：MongoDB（`surveydb`，三个集合 `users` / `surveys` / `responses`）
+- **数据库**：MongoDB（`surveydb`，五个集合 `users` / `surveys` / `responses` / `question_items` / `question_versions`）
 - **前端**：Thymeleaf + 原生 JavaScript（fetch），无前端构建步骤
 - **测试**：JUnit 5、MockMvc、内嵌 MongoDB（de.flapdoodle.embed.mongo.spring31x）
 
@@ -53,6 +55,7 @@ open http://localhost:8080/login
 | `/surveys` | 我的问卷列表 |
 | `/surveys/{id}/edit` | 问卷编辑器 |
 | `/surveys/{id}/stats` | 统计结果 |
+| `/library` | 题库（我的题目 / 共享广场） |
 | `/s/{shareCode}` | 填写页（对外分享） |
 
 ## 配置
@@ -84,9 +87,9 @@ dbms_project/
 ├── docs/                                  设计与过程文档
 ├── src/main/java/com/example/survey/
 │   ├── SurveyApplication.java             启动类
-│   ├── config/                            WebConfig（拦截器注册）
-│   ├── controller/                        Auth / Survey / Fill / Page 控制器
-│   ├── service/                           Auth / Survey / Response / Stats 业务层
+│   ├── config/                            WebConfig（拦截器注册）、SchemaMigrationRunner（旧数据迁移）
+│   ├── controller/                        Auth / Survey / Fill / Item / Page 控制器
+│   ├── service/                           Auth / Survey / Response / Stats / Item 业务层
 │   ├── core/                              可扩展核心逻辑
 │   │   ├── question/                      题型处理器接口 + 4 个实现 + 注册表
 │   │   ├── logic/                         条件算子注册表 + 跳转引擎
@@ -99,7 +102,7 @@ dbms_project/
 │   └── exception/                         统一异常处理
 ├── src/main/resources/
 │   ├── application.yml
-│   ├── templates/                         login / surveys / edit / fill / stats
+│   ├── templates/                         login / surveys / edit / fill / stats / library
 │   └── static/                            css/app.css、js/common.js
 └── src/test/java/com/example/survey/      单元 / 集成 / 端到端测试
 ```
@@ -137,7 +140,20 @@ dbms_project/
 | POST | `/api/s/{shareCode}/responses/{responseId}/answers` | 保存单题答案，返回下一题 |
 | POST | `/api/s/{shareCode}/responses/{responseId}/submit` | 提交答卷 |
 
-完整参数、响应结构与错误码见 [API 说明](docs/02-API说明.md)。
+**题库（需登录，阶段二新增）**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/items` / `/api/items/shared` | 我的题库 / 共享广场 |
+| POST | `/api/items` | 新建题目（自动 v1） |
+| GET / PUT / DELETE | `/api/items/{id}` | 详情 / 修改（内容变化自动产生新版本）/ 删除（被引用则 409） |
+| POST | `/api/items/{id}/share` | 共享开关 |
+| GET | `/api/items/{id}/versions` | 版本历史链 |
+| POST | `/api/items/{id}/restore` | 以旧版内容创建最新版 |
+| GET | `/api/items/{id}/usage` | 被哪些问卷使用 |
+| GET | `/api/items/{id}/stats` | 跨问卷统计（按版本分组） |
+
+完整参数、响应结构与错误码见 [API 说明](docs/02-API说明.md)，题库设计见 [题库与版本扩展](docs/07-题库与版本扩展.md)。
 
 ## 测试
 
@@ -153,18 +169,22 @@ mvn test
 | `LogicEngineTest` | 纯单元（跳转引擎） | 11 |
 | `SurveyFlowIntegrationTest` | 集成（Spring + 内嵌 Mongo） | 21 |
 | `ApiEndToEndTest` | 端到端（MockMvc 完整链路） | 8 |
+| `ItemApiTest` | 端到端（题库 / 版本 / 共享 / 快照隔离 / 迁移 / 跨问卷统计） | 14 |
 
-最近一次执行：**48 个用例全部通过（0 失败 / 0 错误）**。
+最近一次执行：**62 个用例全部通过（0 失败 / 0 错误）**。
 
 > 若 Maven 本地仓库位于受限目录导致插件下载报 `AccessDeniedException`，请在非沙箱终端中运行。
 
 ## 设计要点
 
 - **文档模型**：题目、选项、约束、跳转规则全部内嵌于 `surveys`；答案内嵌于 `responses`。问卷是可变定义，答卷是已发生记录，二者用 `surveyId` 引用而非内嵌复制。
+- **版本不可变 + 快照（阶段二）**：题目内容只在 `question_versions` 中以新版本演进，旧版本永不修改；问卷内嵌题目是引用时刻的快照并记录 `itemId/versionId/version`，因此修改题库绝不影响已做好的问卷，第一阶段的校验/跳转/统计逻辑零改动。
+- **静默版本化**：保存问卷时自动判定——新题入题库、改自己的题产生新版本、改别人的共享题自动 fork，用户无需理解版本概念。
 - **不写死逻辑**：题型通过 `QuestionTypeHandler` + Spring 注册表扩展，新增题型只需加一个实现类；跳转条件通过 `ConditionOperators` 注册表扩展，新增算子只需注册一行。
 - **三层校验**：前端即时提示 → 保存单题时后端校验 → 提交时沿跳转路径逐题复核。
 - **防脏数据**：回改前面的题目会清除该题之后的旧答案（跳转路径可能已改变），避免统计污染。
 - **发布即锁定**：发布后题目与逻辑结构不可修改，标题、说明与设置仍可调整，保证已发出的链接与答卷一致。
+- **平滑迁移**：启动时自动把 `schemaVersion=1` 的旧问卷题目迁移为题库条目 v1 并回填引用，幂等可重复执行。
 
 ## 文档
 
@@ -176,10 +196,11 @@ mvn test
 | [测试用例](docs/04-测试用例.md) | 自动化用例与冒烟验证的步骤、输入、预期与结果 |
 | [AI 使用日志](docs/05-AI使用日志.md) | 提示词、AI 产出、人工修改与问题修复记录 |
 | [项目完成报告](docs/06-项目完成报告.md) | 目标、设计、测试结论、问题与第二阶段扩展预留 |
+| [题库与版本扩展](docs/07-题库与版本扩展.md) | 阶段二：需求对照、版本模型、接口、迁移与测试 |
 
-## 已知限制（阶段一）
+## 已知限制
 
-- 跳转规则只允许向后跳，避免环；向前跳与循环需在第二阶段配合访问计数实现。
-- 已发布问卷不支持修改题目结构。
+- 跳转规则只允许向后跳，避免环；向前跳与循环需配合访问计数实现。
+- 已发布问卷不支持修改题目结构（题库题目本身可随时改出新版本，新问卷可引用新版本）。
 - 统计实时计算、不落库，适合当前数据规模。
 - JWT 密钥写在配置文件，部署时应改为环境变量。

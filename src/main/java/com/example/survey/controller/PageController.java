@@ -40,6 +40,12 @@ public class PageController {
         return "stats";
     }
 
+    /** 题库页 */
+    @GetMapping("/library")
+    public String library() {
+        return "library";
+    }
+
     /** 填写页（分享链接） */
     @GetMapping("/s/{shareCode}")
     public String fill(@PathVariable String shareCode, Model model) {
