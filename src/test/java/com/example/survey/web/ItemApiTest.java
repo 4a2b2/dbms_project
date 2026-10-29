@@ -288,11 +288,27 @@ class ItemApiTest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    /** 需求一：问卷里的新题保存时自动入题库 */
+    /** 需求一（调整后）：问卷里的新题默认不入题库，仅属于本问卷 */
     @Test
-    void surveySaveAutoCreatesItem() throws Exception {
+    void surveySaveWithoutFlagKeepsQuestionLocal() throws Exception {
+        String token = register("lib_local");
+        String surveyId = createSurvey(token, List.of(single("q1", "仅本卷使用", true, "好", "差")));
+
+        JsonNode q = getSurvey(token, surveyId).get("questions").get(0);
+        assertTrue(q.get("itemId") == null || q.get("itemId").isNull());
+        // 题库里没有这条题
+        mockMvc.perform(get("/api/items")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    /** 需求一（调整后）：勾选「添加到题库」的新题保存时才入题库 */
+    @Test
+    void surveySaveWithAddToLibraryFlagCreatesItem() throws Exception {
         String token = register("lib_auto");
-        String surveyId = createSurvey(token, List.of(single("q1", "自动入题库", true, "好", "差")));
+        var question = single("q1", "手动入题库", true, "好", "差");
+        question.setAddToLibrary(true);
+        String surveyId = createSurvey(token, List.of(question));
 
         JsonNode q = getSurvey(token, surveyId).get("questions").get(0);
         assertNotNull(q.get("itemId").asText());
@@ -301,7 +317,7 @@ class ItemApiTest extends BaseIntegrationTest {
         mockMvc.perform(get("/api/items")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].title").value("自动入题库"));
+                .andExpect(jsonPath("$[0].title").value("手动入题库"));
     }
 
     /** 需求三/五：问卷引用 v1 发布后，题库改出 v2，问卷内容保持 v1 不变 */

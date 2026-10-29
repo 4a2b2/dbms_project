@@ -26,6 +26,12 @@ public class PageController {
         return "surveys";
     }
 
+    /** 问卷详情：直接访问 /surveys/{id} 时转到编辑器 */
+    @GetMapping("/surveys/{id}")
+    public String surveyDetail(@PathVariable String id) {
+        return "redirect:/surveys/" + id + "/edit";
+    }
+
     /** 问卷编辑器 */
     @GetMapping("/surveys/{id}/edit")
     public String edit(@PathVariable String id, Model model) {

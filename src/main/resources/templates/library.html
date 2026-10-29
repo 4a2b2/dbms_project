@@ -63,6 +63,15 @@
             return;
         }
         box.innerHTML = items.map(itemHtml).join('');
+        // 重渲染会把展开面板还原成"加载中…"，这里按当前展开状态重新填充
+        const openId = Object.keys(expanded)[0];
+        if (openId) await renderPanel(openId, expanded[openId]);
+    }
+
+    async function renderPanel(id, panel) {
+        if (panel === 'history') await renderHistory(id);
+        else if (panel === 'usage') await renderUsage(id);
+        else if (panel === 'stats') await renderStats(id);
     }
 
     function switchTab(t) {
@@ -117,14 +126,12 @@
 
     async function toggle(id, panel) {
         expanded = expanded[id] === panel ? {} : { [id]: panel };
-        await load();
-        if (expanded[id] === 'history') renderHistory(id);
-        if (expanded[id] === 'usage') renderUsage(id);
-        if (expanded[id] === 'stats') renderStats(id);
+        await load(); // load 内部会按 expanded 自动填充面板
     }
 
     async function renderHistory(id) {
         const el = document.getElementById('sub-' + id);
+        if (!el) return;
         try {
             const versions = await api('/api/items/' + id + '/versions');
             const it = items.find(x => x.id === id);
@@ -143,6 +150,7 @@
 
     async function renderUsage(id) {
         const el = document.getElementById('sub-' + id);
+        if (!el) return;
         try {
             const usage = await api('/api/items/' + id + '/usage');
             el.innerHTML = `<h4 style="margin:0 0 8px">被 ${usage.length} 处引用</h4>` + (usage.length
@@ -157,6 +165,7 @@
 
     async function renderStats(id) {
         const el = document.getElementById('sub-' + id);
+        if (!el) return;
         try {
             const s = await api('/api/items/' + id + '/stats');
             let html = `<h4 style="margin:0 0 8px">跨问卷统计</h4>
@@ -342,6 +351,7 @@
         try {
             await api('/api/items/' + id, { method: 'DELETE' });
             showNotice('已删除', false);
+            expanded = {};
             await load();
         } catch (e) { showNotice(e.message); }
     }

@@ -239,7 +239,7 @@ class ApiEndToEndTest extends BaseIntegrationTest {
         String surveyId = objectMapper.readTree(created).get("id").asText();
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("questions", List.of(text("q1", "随便说说", false, null)));
+        payload.put("questions", List.of(text("q1", "随便说说", true, null)));
         mockMvc.perform(put("/api/surveys/" + surveyId)
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)

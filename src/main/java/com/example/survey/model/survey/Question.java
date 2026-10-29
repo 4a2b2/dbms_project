@@ -26,6 +26,11 @@ public class Question {
     /** 引用的版本号（冗余展示用） */
     private Integer version;
 
+    /** 保存请求中的一次性意图：true 表示把这道新题加入题库（仅对无 itemId 的题生效）。
+     *  不落库——入题库后归属由 itemId 表达；未勾选的题目只属于本问卷。 */
+    @org.springframework.data.annotation.Transient
+    private Boolean addToLibrary;
+
     /** 题型字符串：single / multiple / text / number（不用枚举，便于扩展新题型） */
     private String type;
 

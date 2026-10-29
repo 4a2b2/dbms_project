@@ -53,7 +53,7 @@
         }
         app.innerHTML = `<div class="card">
             <div class="progress-text">第 ${questionPosition(q.qid)} / ${survey.questions.length} 题</div>
-            <h3 style="margin:0 0 4px">${escapeHtml(q.title)} ${q.required ? '<span style="color:var(--danger)">*</span>' : ''}</h3>
+            <h3 style="margin:0 0 4px">${escapeHtml(q.title)} ${q.required ? '<span class="tag">必答</span>' : '<span class="tag gray">选答</span>'}</h3>
             <div style="margin:16px 0 20px">${inputHtml}</div>
             <button class="btn btn-primary" onclick="saveAndNext()">下一题</button>
         </div>`;

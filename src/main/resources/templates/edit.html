@@ -130,7 +130,8 @@
 
             <div class="card row-between">
                 <div class="muted" id="saveHint"></div>
-                <div style="display:flex;gap:10px">
+                <div style="display:flex;gap:10px;align-items:center">
+                    <span id="saveMsg" style="color:var(--accent-hover);font-size:14px"></span>
                     <button class="btn btn-primary" onclick="save()">保存</button>
                     ${isDraft() ? `<button class="btn" onclick="save(true)">保存并发布</button>` : ""}
                 </div>
@@ -161,12 +162,17 @@
                 <input type="text" value="${escapeHtml(q.title)}" ${ro} onchange="updateQuestion(${i},'title',this.value)"></div>
             <label><input type="checkbox" ${q.required ? "checked" : ""} ${ro} style="width:auto" onchange="updateQuestion(${i},'required',this.checked)"> 必答</label>
             ${
+              isDraft() && !q.itemId
+                ? `<label style="margin-left:16px" title="勾选后保存，该题会加入题库，可在其他问卷中复用；不勾选则只属于本问卷"><input type="checkbox" ${q.addToLibrary ? "checked" : ""} style="width:auto" onchange="updateQuestion(${i},'addToLibrary',this.checked)"> 添加到题库</label>`
+                : ""
+            }
+            ${
               isChoice
                 ? `<div style="margin-top:10px"><label class="muted">选项</label>
                 ${q.options
                   .map(
                     (o, j) => `<div class="option-row">
-                    <input type="text" value="${escapeHtml(o.text)}" ${ro} onchange="updateOption(${i},${j},this.value)">
+                    <input type="text" value="${escapeHtml(o.text)}" ${ro} onfocus="clearDefaultOption(this)" onblur="restoreDefaultOption(this,${i},${j})" onchange="updateOption(${i},${j},this.value)">
                     ${isDraft() ? `<button class="btn btn-sm btn-danger" onclick="removeOption(${i},${j})">×</button>` : ""}
                 </div>`,
                   )
@@ -340,6 +346,16 @@
         markDirty();
       }
 
+      /* 默认的"选项N"只是占位文案：聚焦时自动清空，未填写就离开则恢复，避免空选项 */
+      function clearDefaultOption(el) {
+        if (/^选项\d+$/.test(el.value)) el.value = "";
+      }
+
+      function restoreDefaultOption(el, i, j) {
+        if (!el.value.trim()) el.value = "选项" + (j + 1);
+        updateOption(i, j, el.value);
+      }
+
       function updateConstraint(i, key, value) {
         const c = (survey.questions[i].constraints =
           survey.questions[i].constraints || {});
@@ -473,9 +489,23 @@
             survey = await api(`/api/surveys/${SURVEY_ID}/publish`, {
               method: "POST",
             });
-            showNotice("已发布", "success");
+            render();
+            const msg = document.getElementById("saveMsg");
+            if (msg) msg.textContent = "发布成功，即将返回问卷列表…";
+            // 稍作停留让用户看到提示，随后返回问卷列表
+            setTimeout(() => {
+              location.href = "/surveys";
+            }, 1200);
+          } else {
+            render();
+            const msg = document.getElementById("saveMsg");
+            if (msg) {
+              msg.textContent = "保存成功";
+              setTimeout(() => {
+                if (msg.isConnected) msg.textContent = "";
+              }, 3000);
+            }
           }
-          render();
         } catch (e) {
           showNotice(e.message);
         }

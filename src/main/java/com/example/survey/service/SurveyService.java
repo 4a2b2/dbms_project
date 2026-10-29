@@ -114,6 +114,11 @@ public class SurveyService {
         if (survey.getQuestions() == null || survey.getQuestions().isEmpty()) {
             throw ApiException.badRequest("问卷至少需要一道题才能发布");
         }
+        // 业务约定：没有必答题的问卷不允许发布（保存草稿不受限）
+        boolean hasRequired = survey.getQuestions().stream().anyMatch(q -> q.isRequired());
+        if (!hasRequired) {
+            throw ApiException.badRequest("当前问卷中没有必答题，发布失败");
+        }
         validateStructure(survey);
         if (survey.getShareCode() == null) {
             survey.setShareCode(generateShareCode());
@@ -158,18 +163,23 @@ public class SurveyService {
 
     /**
      * 保存问卷前解析每道题与题库的关系：
-     * - 无 itemId：新题，自动创建题库条目 + v1；
+     * - 无 itemId 且勾选「添加到题库」：创建题库条目 + v1 并引用；
+     * - 无 itemId 且未勾选：题目只属于本问卷，不入题库；
      * - 仅带 itemId/versionId 且无内容：纯引用（从题库选题/切换版本），以版本内容写快照；
      * - 内容与所引版本一致：沿用版本；
      * - 内容有改动且是自己的题：在该条目下创建新版本并引用；
      * - 内容有改动且是别人的共享题：另存为自己的新条目（fork），不污染他人题库。
-     * 无论哪条路径，最终都把版本内容写入问卷内嵌快照——发布后快照固化，题库再改不影响本问卷。
+     * 除"不入库"路径外，最终都把版本内容写入问卷内嵌快照——发布后快照固化，题库再改不影响本问卷。
      */
     private List<Question> resolveQuestions(String uid, List<Question> questions) {
         for (Question q : questions) {
             if (q.getItemId() == null) {
-                QuestionItem item = itemService.createFromQuestion(uid, q, null);
-                applyRef(q, item, itemService.currentVersion(item));
+                // 仅当用户在编辑器勾选「添加到题库」时才入题库，否则题目仅属于本问卷
+                if (Boolean.TRUE.equals(q.getAddToLibrary())) {
+                    QuestionItem item = itemService.createFromQuestion(uid, q, null);
+                    applyRef(q, item, itemService.currentVersion(item));
+                    q.setAddToLibrary(null);
+                }
                 continue;
             }
             QuestionItem item = itemRepository.findById(q.getItemId())

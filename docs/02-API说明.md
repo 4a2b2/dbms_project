@@ -1,4 +1,4 @@
-# API 说明（阶段一）
+# API 说明（版本 2）
 
 所有 API 以 `/api` 开头，请求与响应均为 JSON（`Content-Type: application/json`）。
 错误统一返回 `{"error": "错误信息"}`。
@@ -8,9 +8,9 @@
 | 200 | 成功 | 正常业务 |
 | 400 | 参数/校验错误 | `@Valid` 失败、题型约束不满足、必答题未答、跳转规则非法 |
 | 401 | 未登录或登录失效 | 缺少/无效 token、需登录的问卷匿名访问 |
-| 403 | 无权访问 | 操作他人问卷 |
-| 404 | 资源不存在 | 问卷/答卷不存在 |
-| 409 | 冲突 | 用户名已注册、已提交过且不允许重复提交 |
+| 403 | 无权访问 | 操作他人问卷、修改他人题库条目、引用他人未共享的题目 |
+| 404 | 资源不存在 | 问卷/答卷/题目条目或版本不存在；请求了不存在的静态路径 |
+| 409 | 冲突 | 用户名已注册、已提交过且不允许重复提交、题库条目被问卷引用而禁止删除 |
 | 500 | 服务器内部错误 | 未预期异常 |
 
 ## 1. 认证
@@ -54,6 +54,11 @@ token 无效时拦截器直接返回 401 `{"error":"登录状态无效或已过�
 ### PUT /api/surveys/{id}
 字段为 `null` 表示不修改。草稿可改全部字段；**已发布问卷只允许改 `title`/`description`/`settings`**，改 `questions`/`logic` 返回 400 `发布后题目与逻辑结构不可修改`。
 
+版本 2 的题目解析规则：
+
+- 新题（无 `itemId`）可带 `addToLibrary: true`，表示这次保存时把它加入题库（创建条目与 v1）；不传或 `false` 则只属于本问卷。
+- 引用题带 `itemId` / `versionId`，内容未变则沿用该版本；内容变化时，自己的题自动产生新版本，他人的共享题自动 fork 为自己的新条目。
+
 请求示例（含四种题型与一条跳转规则）：
 
 ```json
@@ -90,8 +95,9 @@ token 无效时拦截器直接返回 401 `{"error":"登录状态无效或已过�
 | single | 无 | — |
 
 ### POST /api/surveys/{id}/publish
-校验：至少一道题 → 结构校验（qid/oid 唯一、标题非空、题型约束自洽、跳转规则合法）→ 生成唯一 shareCode → `status=PUBLISHED`。
-错误：400 `仅草稿状态的问卷可以发布` / `问卷至少需要一道题才能发布`。
+校验：至少一道题 → 至少一道必答题（否则 400 `当前问卷中没有必答题，发布失败`）→ 结构校验（qid/oid 唯一、标题非空、题型约束自洽、跳转规则合法）→ 生成唯一 shareCode → `status=PUBLISHED`。
+错误：400 `仅草稿状态的问卷可以发布` / `问卷至少需要一道题才能发布` / `当前问卷中没有必答题，发布失败`。
+保存草稿不受必答题限制，只改基本信息也不受影响。
 
 ### POST /api/surveys/{id}/close
 仅 `PUBLISHED` 可关闭 → `status=CLOSED`（关闭后填写端拒绝访问）。错误：400 `仅已发布的问卷可以关闭`。
@@ -119,7 +125,89 @@ token 无效时拦截器直接返回 401 `{"error":"登录状态无效或已过�
 
 说明：只统计 `SUBMITTED` 答卷；多选题 `total` 为作答该题的人数，`options[].count` 为各选项被选次数；未作答的答卷不计入对应题目的 `total`。
 
-## 3. 填写端（通过分享链接，可匿名）
+## 3. 题库与题目版本（均需登录）
+
+版本 2 新增。条目（item）保存归属与元数据，内容保存在不可变版本（version）中；问卷引用“条目 + 具体版本”，并保留内容快照。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/items` | 我的题库列表（按更新时间倒序） |
+| GET | `/api/items/shared` | 共享广场（他人共享的条目，`mine=false`） |
+| POST | `/api/items` | 新建题目（创建条目与 v1） |
+| GET | `/api/items/{id}` | 条目详情（元数据 + 当前版本内容） |
+| PUT | `/api/items/{id}` | 修改题目：内容变化则产生新版本；只改 tags 不产生版本 |
+| POST | `/api/items/{id}/share` | 设置共享开关 |
+| DELETE | `/api/items/{id}` | 删除题目（被任何问卷引用时返回 409） |
+| GET | `/api/items/{id}/versions` | 版本链（按版本号升序） |
+| POST | `/api/items/{id}/restore` | 以指定旧版本内容创建最新版本 |
+| GET | `/api/items/{id}/usage` | 被哪些问卷使用、分别引用哪个版本 |
+| GET | `/api/items/{id}/stats` | 跨问卷统计（按版本分组） |
+
+### POST /api/items、PUT /api/items/{id}
+
+请求：
+
+```json
+{
+  "type": "single",
+  "title": "你的性别",
+  "required": true,
+  "options": [{ "oid": "o1", "text": "男" }, { "oid": "o2", "text": "女" }],
+  "constraints": {},
+  "tags": ["人口学", "必答"],
+  "note": "新建题目"
+}
+```
+
+- `type` 创建后不可更改（改题型请新建条目）。
+- `options` 的 `oid` 必须非空且唯一；编辑时应保留原 `oid`，否则内容比对会认为选项已变化。
+- `constraints` 为 `null` 或 `{}` 表示清空约束；不同题型的键见第 2 节表格。
+- 响应 200：条目元数据（`id`、`ownerId`、`tags`、`shared`、`currentVersionId`、`currentVersion`、`updatedAt` 等）。
+- 错误：400 标题为空 / 选项非法 / 约束不自洽；403 非本人条目；404 条目不存在。
+
+### POST /api/items/{id}/share
+
+请求 `{"shared": true}`；响应返回更新后的条目。共享后其他用户可在 `/api/items/shared` 看到并引用当前版本，但不能修改原条目。
+
+### DELETE /api/items/{id}
+
+若条目被任何问卷的 `questions[]` 引用（不论草稿还是已发布），返回 409 `该题目已被问卷使用，无法删除`；否则删除条目及其全部版本。
+
+### GET /api/items/{id}/versions
+
+响应数组，每项：`{id, version, parentVersionId, title, note, createdAt, type, required, options, constraints}`。`parentVersionId` 为 null 表示初始版本。
+
+### POST /api/items/{id}/restore
+
+请求 `{"versionId": "<历史版本 id>"}`。以该版本内容创建**新的最新版本**（`note` 为“恢复自 vN”），历史链不删除、不回滚。
+
+### GET /api/items/{id}/usage
+
+响应数组，每项：`{surveyId, surveyTitle, surveyStatus, qid, version, versionId}`，即某问卷用该题目的哪个版本。
+
+### GET /api/items/{id}/stats
+
+响应结构：
+
+```json
+{
+  "itemId": "66f...",
+  "type": "single",
+  "versionCount": 2,
+  "totalResponses": 15,
+  "overall": { "total": 15, "options": [ { "oid": "o1", "text": "男", "count": 9 } ] },
+  "byVersion": [
+    { "version": 1, "versionId": "...", "surveyCount": 1, "responseCount": 10,
+      "summary": { "total": 10, "options": [ ... ] } },
+    { "version": 2, "versionId": "...", "surveyCount": 1, "responseCount": 5,
+      "summary": { "total": 5, "options": [ ... ] } }
+  ]
+}
+```
+
+说明：只统计引用该条目的**非草稿问卷**的 `SUBMITTED` 答卷，按 `versionId` 分组。选择题只给出 `byVersion`（不同版本选项可能不同）；文本 / 数字题在题型全程一致时额外给出 `overall` 总览。
+
+## 4. 填写端（通过分享链接，可匿名）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -153,12 +241,14 @@ token 无效时拦截器直接返回 401 `{"error":"登录状态无效或已过�
 
 响应 200：`{"result":"ok","responseId":"66f..."}`
 
-## 4. 页面路由（Thymeleaf）
+## 5. 页面路由（Thymeleaf）
 
 | 路径 | 页面 |
 |---|---|
 | `/login` | 登录/注册一体页 |
 | `/surveys` | 我的问卷列表（创建、发布、关闭、删除、分享链接） |
-| `/surveys/{id}/edit` | 问卷编辑器（基本信息/设置/题目/约束/跳转规则；发布后只读） |
+| `/surveys/{id}` | 重定向到 `/surveys/{id}/edit` |
+| `/surveys/{id}/edit` | 问卷编辑器（基本信息/设置/题目/约束/跳转规则；可“从题库选择”；发布后只读） |
 | `/surveys/{id}/stats` | 统计页 |
-| `/s/{shareCode}` | 填写页（逐题、跳转、校验、草稿续填） |
+| `/library` | 题库页（我的题库 / 共享广场、版本历史、使用情况、跨问卷统计） |
+| `/s/{shareCode}` | 填写页（逐题、跳转、校验、草稿续填；每题标注必答 / 选答） |

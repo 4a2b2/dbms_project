@@ -319,6 +319,24 @@ class SurveyFlowIntegrationTest extends BaseIntegrationTest {
         assertThrows(ApiException.class, () -> responseService.submit(survey, start.responseId()));
     }
 
+    /** 新规则：整卷没有必答题时保存草稿正常，但发布被拒绝 */
+    @Test
+    void publishRejectedWhenNoRequiredQuestion() {
+        String uid = authService.register(new RegisterRequest("noreq", "Test1234!")).userId();
+        Survey survey = surveyService.create(uid, new CreateSurveyRequest("全选答问卷", null));
+        // 保存草稿（全部为选答题）正常
+        surveyService.update(uid, survey.getId(), new UpdateSurveyRequest(null, null, null,
+                List.of(text("q1", "选答题一", false, null),
+                        text("q2", "选答题二", false, null)), null));
+        // 发布被拒绝
+        ApiException e = assertThrows(ApiException.class, () -> surveyService.publish(uid, survey.getId()));
+        assertTrue(e.getMessage().contains("没有必答题"));
+        // 把其中一题改为必答后即可发布
+        surveyService.update(uid, survey.getId(), new UpdateSurveyRequest(null, null, null,
+                List.of(text("q1", "选答题一", true, null)), null));
+        assertEquals(SurveyStatus.PUBLISHED, surveyService.publish(uid, survey.getId()).getStatus());
+    }
+
     @Test
     void anonymousNotAllowedRequiresLogin() {
         String uid = authService.register(new RegisterRequest("rita", "Test1234!")).userId();
@@ -326,7 +344,7 @@ class SurveyFlowIntegrationTest extends BaseIntegrationTest {
         Settings settings = new Settings();
         settings.setAllowAnonymous(false);
         surveyService.update(uid, survey.getId(), new UpdateSurveyRequest(null, null, settings,
-                List.of(text("q1", "题目", false, null)), null));
+                List.of(text("q1", "题目", true, null)), null));
         Survey published = surveyService.publish(uid, survey.getId());
 
         ApiException e = assertThrows(ApiException.class, () -> responseService.start(published, null));
@@ -341,7 +359,7 @@ class SurveyFlowIntegrationTest extends BaseIntegrationTest {
         settings.setAllowAnonymous(true);
         settings.setAllowMultiple(false);
         surveyService.update(uid, survey.getId(), new UpdateSurveyRequest(null, null, settings,
-                List.of(text("q1", "题目", false, null)), null));
+                List.of(text("q1", "题目", true, null)), null));
         Survey published = surveyService.publish(uid, survey.getId());
 
         StartFillResponse first = responseService.start(published, uid);
